@@ -12,12 +12,14 @@
 
 <hr>
 
-# TOBB-GPT
+# Sigma Chatbot
 
-It is a chatbot powered by OpenAI, Langchain, ChromeDB, and Google APIs to educate students about TOBB University of Economics and Technology.
+A university information chatbot built with Streamlit, OpenAI, LangChain, ChromaDB, and Google APIs.
+
+This repository is a fork of [TOBB-GPT](https://github.com/TOBB-ETU-CS-Community/TOBB-GPT), originally developed for TOBB University of Economics and Technology.
 
 
-https://tobb-gpt.streamlit.app/
+[Upstream TOBB-GPT demo](https://tobb-gpt.streamlit.app/)
 
 
 ## Table of Contents
@@ -42,13 +44,13 @@ Before setting up the project, ensure that you have the following prerequisites 
 1. Clone the project repository:
 
 ```
-git clone https://github.com/TOBB-ETU-CS-Community/TOBB-GPT.git
+git clone https://github.com/ataturhan21/Sigma-Chatbot.git
 ```
 
 2. Navigate to the project directory:
 
 ```
-cd tobb_gpt
+cd Sigma-Chatbot
 ```
 
 3. Install project dependencies using Poetry:
