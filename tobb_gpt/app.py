@@ -412,6 +412,7 @@ def main():
         model_host = "openai" if model.startswith("openai") else "huggingface"
         api_key = st.sidebar.text_input(
             f"Lütfen {model_host.title()} API keyini girin",
+            type="password",
         )
         if is_api_key_valid(model_host, api_key):
             st.sidebar.success("API keyi başarıyla alındı.")

@@ -26,6 +26,7 @@ This repository is a fork of [TOBB-GPT](https://github.com/TOBB-ETU-CS-Community
 
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
+- [Configuration](#configuration)
 - [Usage](#usage)
 - [Contributing](#contributing)
 - [License](#license)
@@ -56,10 +57,22 @@ cd Sigma-Chatbot
 3. Install project dependencies using Poetry:
 
 ```
-poetry install
+poetry install --no-root
 ```
 
-This command will create a virtual environment and install all the necessary dependencies specified in the `pyproject.toml` file.
+This installs the locked dependencies without trying to package the Streamlit application.
+
+## Configuration
+
+1. Create `.streamlit/secrets.toml` in the repository root, using [`secrets.example.toml`](secrets.example.toml) as a template.
+2. Set `GOOGLE_CSE_ID` to your Google Programmable Search Engine ID and `GOOGLE_API_KEY` to its API key. The application reads both when it starts.
+3. Select a model in the sidebar and enter the matching OpenAI or Hugging Face credential. The input is masked.
+
+The current UI uses web search to collect pages for retrieval. The code also contains an alternative document-index workflow based on [`static/Links.xlsx`](static/Links.xlsx); it is not the active UI path.
+
+Run the application from the repository root so that `static/` assets and local Chroma paths resolve. The existing `.gitignore` excludes `.streamlit/`; keep real credentials in that ignored directory.
+
+These are the original LangChain, OpenAI, and Chroma integrations recorded in `pyproject.toml` and `poetry.lock`. Provider models, access permissions, and API compatibility must be checked before a live deployment.
 
 ## Usage
 
