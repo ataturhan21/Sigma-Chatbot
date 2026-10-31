@@ -114,3 +114,11 @@ If you would like to contribute to this project, follow the guidelines below:
 GPL v3
 
 ---
+
+## Offline regression checks
+
+Run `poetry run python -m unittest discover -s tests -v`. OpenAI request credentials
+are bound explicitly despite the legacy LangChain client's global-key behavior, and temporary web-search collections have unique
+names. Malformed query-rewrite responses fall back to the original question;
+search responses without usable source links fail clearly before indexing.
+The tests isolate production functions with fake providers and make no API calls.

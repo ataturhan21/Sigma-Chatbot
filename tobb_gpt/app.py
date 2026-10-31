@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import uuid
 from collections import OrderedDict
 
 import openai
@@ -18,6 +19,7 @@ from langchain.text_splitter import MarkdownTextSplitter
 from langchain.tools import Tool
 from langchain.utilities import GoogleSearchAPIWrapper
 from langchain.vectorstores import Chroma
+from modules.provider_clients import bind_openai_client
 from modules.utils import add_bg_from_local, local_css, set_page_config
 
 # from gtts import gTTS
@@ -58,12 +60,7 @@ def is_api_key_valid(model_host: str, api_key: str):
         )
         return False
     else:
-        if model_host == "openai":
-            os.environ["OPENAI_API_KEY"] = api_key
-            openai.api_key = api_key
-        else:
-            os.environ["HUGGINGFACEHUB_API_TOKEN"] = api_key
-        return True
+        return model_host in {"openai", "huggingface"}
 
 
 # def speech2text():
@@ -78,7 +75,7 @@ def is_api_key_valid(model_host: str, api_key: str):
 # return None
 
 
-def transform_question(model_host, question):
+def transform_question(model_host, question, api_key):
     """
     Transform a user's question into a search query for a given model host.
 
@@ -113,11 +110,16 @@ def transform_question(model_host, question):
     completion = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=messages,
+        api_key=api_key,
     )
     response = completion.choices[0].message.content
-    json_object = json.loads(response)
-    # st.write(json_object)
-    return json_object["query"]
+    try:
+        query = json.loads(response).get("query")
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return question
+    return (
+        query.strip() if isinstance(query, str) and query.strip() else question
+    )
 
 
 def search_web(query, link_count: int = 5):
@@ -140,7 +142,7 @@ def search_web(query, link_count: int = 5):
     return tool.run(query)
 
 
-def create_query_vector_store(model_host, results):
+def create_query_vector_store(model_host, results, api_key):
     """
     Create a query vector store for document retrieval based on the specified model host.
 
@@ -152,7 +154,17 @@ def create_query_vector_store(model_host, results):
         list: A list containing a query vector store retriever and a list of URLs from the search results.
 
     """
-    urls = [val["link"] for val in results]
+    urls = list(
+        dict.fromkeys(
+            val["link"]
+            for val in results
+            if isinstance(val, dict)
+            and isinstance(val.get("link"), str)
+            and val["link"].startswith(("https://", "http://"))
+        )
+    )
+    if not urls:
+        raise ValueError("Search returned no usable source links")
     loader = WebBaseLoader(urls)
     documents = loader.load()
     for doc in documents:
@@ -171,15 +183,17 @@ def create_query_vector_store(model_host, results):
     texts = char_text_splitter.split_documents(documents)
 
     embeddings = (
-        OpenAIEmbeddings()
+        bind_openai_client(OpenAIEmbeddings(openai_api_key=api_key), api_key)
         if model_host == "openai"
-        else HuggingFaceHubEmbeddings()
+        else HuggingFaceHubEmbeddings(huggingfacehub_api_token=api_key)
     )
-    vector_store = Chroma.from_documents(texts, embeddings)
+    vector_store = Chroma.from_documents(
+        texts, embeddings, collection_name=f"sigma-{uuid.uuid4().hex}"
+    )
     return [vector_store.as_retriever(search_kwargs={"k": 5}), urls]
 
 
-def create_document_vector_store(model_host):
+def create_document_vector_store(model_host, api_key):
     """
     Create a document vector store for document retrieval based on the specified model host.
 
@@ -226,9 +240,9 @@ def create_document_vector_store(model_host):
     # st.write(texts)
 
     embeddings = (
-        OpenAIEmbeddings()
+        bind_openai_client(OpenAIEmbeddings(openai_api_key=api_key), api_key)
         if model_host == "openai"
-        else HuggingFaceHubEmbeddings()
+        else HuggingFaceHubEmbeddings(huggingfacehub_api_token=api_key)
     )
     persist_directory = f"./tobb_gpt/chroma_db_{model_host}"
     vector_store = Chroma.from_documents(
@@ -248,7 +262,7 @@ def create_document_vector_store(model_host):
     return vector_store.as_retriever(search_kwargs={"k": 5})
 
 
-def load_document_vector_store(model_host):
+def load_document_vector_store(model_host, api_key):
     """
     Load a pre-existing document vector store for document retrieval based on the specified model host.
 
@@ -259,9 +273,9 @@ def load_document_vector_store(model_host):
         vector_store.retriever.Retriever: A retriever object that allows similarity search based on document embeddings.
     """
     embeddings = (
-        OpenAIEmbeddings()
+        bind_openai_client(OpenAIEmbeddings(openai_api_key=api_key), api_key)
         if model_host == "openai"
-        else HuggingFaceHubEmbeddings()
+        else HuggingFaceHubEmbeddings(huggingfacehub_api_token=api_key)
     )
     persist_directory = f"./tobb_gpt/chroma_db_{model_host}"
     vector_store = Chroma(
@@ -271,7 +285,7 @@ def load_document_vector_store(model_host):
     return vector_store.as_retriever(search_kwargs={"k": 5})
 
 
-def create_llm(model):
+def create_llm(model, api_key):
     """
     Create a language model (LLM) for chat-based applications based on the specified model.
 
@@ -282,13 +296,18 @@ def create_llm(model):
         Union[ChatOpenAI, HuggingFaceHub]: A language model instance suitable for chat-based applications.
     """
     return (
-        ChatOpenAI(
-            model_name=model.split("/")[1],
-            temperature=0,
+        bind_openai_client(
+            ChatOpenAI(
+                model_name=model.split("/")[1],
+                openai_api_key=api_key,
+                temperature=0,
+            ),
+            api_key,
         )
         if model.startswith("openai")
         else HuggingFaceHub(
             repo_id=model,
+            huggingfacehub_api_token=api_key,
             model_kwargs={
                 "temperature": 0.1,
                 "max_length": 4096,
@@ -458,28 +477,32 @@ def main():
 
             if choice == "İnternetteki sayfalar ile":
                 with st.spinner("Soru internet üzerinde aranıyor"):
-                    query = transform_question(model_host, user_input)
+                    query = transform_question(model_host, user_input, api_key)
                     query = query.replace('"', "").replace("'", "")
                     results = search_web(query)
 
                 with st.spinner("Toplanan bilgiler derleniyor"):
                     retriever, urls = create_query_vector_store(
-                        model_host, results
+                        model_host, results, api_key
                     )
             elif choice == "Hazır dokümanlar ile":
                 if os.path.exists(f"./tobb_gpt/chroma_db_{model_host}"):
                     with st.spinner(
                         "TOBB ETÜ'ye ait geçmiş tarihte taranmış sayfalar yükleniyor"
                     ):
-                        retriever = load_document_vector_store(model_host)
+                        retriever = load_document_vector_store(
+                            model_host, api_key
+                        )
                 else:
                     with st.spinner(
                         "TOBB ETÜ'ye ait 200e yakın sayfa taranıyor ve işleniyor"
                     ):
-                        retriever = create_document_vector_store(model_host)
+                        retriever = create_document_vector_store(
+                            model_host, api_key
+                        )
 
             with st.spinner("Soru cevaplanıyor"):
-                llm = create_llm(model)
+                llm = create_llm(model, api_key)
                 prompt_template = create_main_prompt()
                 qa = create_retrieval_qa(llm, prompt_template, retriever)
                 response = qa.run(user_input)
